@@ -1,1 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Healthcare ChatBot</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #fcfcfc; }
+        .container {color: #e1f5fe; max-width: 600px; margin: 50px auto; padding: 20px; background-color: #101010; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        .chatbox { max-height: 400px; overflow-y: auto; margin-bottom: 1em; }
+        .user, .bot {color: #101010; margin: 10px 0; padding: 10px; border-radius: 10px; }
+        .user { background-color: #e1f5fe; text-align: right; }
+        .bot { background-color: #e8f5e9; }
+        .input-group { display: flex; }
+        .input-group input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ccc; margin-right: 10px; }
+        .input-group button { padding: 10px 20px; border-radius: 20px; background-color: #28a745; color: white; border: none; cursor: pointer; }
+        .input-group button:hover { background-color: #218838; }
+        ul { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Healthcare ChatBot</h1>
 
+        <div class="chatbox" id="chatbox">
+            <div class="bot">
+                <p>Hi! Type "hi" to start our chat.</p>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="userInput" placeholder="Type your message here...">
+            <button onclick="handleInput()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let step = 0;
+        let userData = {};
+        let appointments = [];
+
+        function handleInput() {
+            const userInput = document.getElementById('userInput').value.trim().toLowerCase();
+            document.getElementById('userInput').value = '';
+
+            displayMessage('user', userInput);
+
+            if (step === 0) {
+                if (userInput === 'hi') {
+                    step = 1;
+                    displayMessage('bot', 'Great! What is your name?');
+                } else {
+                    displayMessage('bot', 'Please type "hi" to start.');
+                }
+            } else if (step === 1) {
+                userData.name = userInput;
+                step = 2;
+                displayMessage('bot', `Hello, ${userData.name}! Please tell me your symptoms (comma separated):`);
+            } else if (step === 2) {
+                userData.symptoms = userInput.split(',').map(s => s.trim());
+                submitSymptoms();
+            } else if (step === 3) {
+                if (userInput.includes('schedule') && userInput.includes('appointment')) {
+                    step = 4;
+                    displayMessage('bot', 'Sure! Please enter your preferred date (YYYY-MM-DD):');
+                } else if (userInput.includes('view') && userInput.includes('appointments')) {
+                    viewAppointments();
+                } else if (userInput.includes('new') && userInput.includes('symptoms')) {
+                    step = 2;
+                    displayMessage('bot', 'Please tell me your symptoms (comma separated):');
+                }else if (userInput.includes('no')) {
+                    displayMessage('bot', `Goodbye ${userData.name}, Stay safe!`);
+                } else {
+                    displayMessage('bot', 'Please choose to schedule an appointment, view your appointments, or provide new symptoms.');
+                }
+            } 
+            else if (step === 4) {
+                userData.date = userInput;
+                step = 5;
+                displayMessage('bot', 'Got it! What time would you prefer? (HH:MM)');
+            } 
+            else if (step === 5) {
+                userData.time = userInput;
+                step = 6;
+                displayMessage('bot', 'Who is the doctor you would like to see?');
+            }
+            else if (step === 6) {
+                userData.doctor_name = userInput;
+                step = 7;
+                displayMessage('bot', 'Where would you like to meet the doctor? Please provide the location.');
+            }
+            else if (step === 7) {
+                userData.location = userInput;
+                scheduleAppointment();
+            } 
+            else if (step === 8) {
+                if (userInput.includes('view') && userInput.includes('appointments')) {
+                    viewAppointments();
+                } else if (userInput.includes('new') && userInput.includes('symptoms')) {
+                    step = 2;
+                    displayMessage('bot', 'Please tell me your symptoms (comma separated):');
+                } else if (userInput.includes('schedule') && userInput.includes('appointment')) {
+                    step = 4;
+                    displayMessage('bot', 'Sure! Please enter your preferred date (YYYY-MM-DD):');
+                } else if (userInput.includes('no')) {
+                    displayMessage('bot', `Goodbye ${userData.name}, Stay safe!`);
+                } else {
+                    displayMessage('bot', 'Is there anything else I can help with? You can provide new symptoms, schedule an appointment, or view your appointments.');
+                }
+            }
+        }
+
+        function displayMessage(sender, message) {
+            const chatbox = document.getElementById('chatbox');
+            const messageElem = document.createElement('div');
+            messageElem.classList.add(sender);
+            messageElem.innerHTML = `<p>${message}</p>`;
+            chatbox.appendChild(messageElem);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+        async function submitSymptoms() {
+            displayMessage('bot', 'Analyzing your symptoms...');
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symptoms: userData.symptoms })
+            });
+            const result = await response.json();
+
+            displayMessage('bot', `Based on your symptoms, it is possible you have: ${result.disease}.`);
+            displayMessage('bot', result.description);
+            displayMessage('bot', `Here are some precautions you can take:`);
+            displayMessage('bot', `<ul>${result.precautions.map(p => `<li>${p}</li>`).join('')}</ul>`);
+
+            step = 3;
+            displayMessage('bot', 'Would you like to schedule an appointment, view your appointments, or provide new symptoms?');
+        }
+
+        async function scheduleAppointment() {
+            displayMessage('bot', 'Scheduling your appointment...');
+
+            const response = await fetch('/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            });
+            const result = await response.json();
+
+            appointments.push({ name: userData.name, date: userData.date, time: userData.time, doctor: userData.doctor_name, location: userData.location });
+
+            displayMessage('bot', result.message);
+            step = 8;
+            displayMessage('bot', 'Your appointment has been scheduled. Would you like to view your appointments now?');
+        }
+
+        async function viewAppointments() {
+            displayMessage('bot', 'Retrieving your appointments...');
+
+            // Automatically remove past appointments
+            const today = new Date().toISOString().split('T')[0];
+            appointments = appointments.filter(a => a.date >= today);
+
+            if (appointments.length === 0) {
+                displayMessage('bot', 'You have no upcoming appointments.');
+            } else {
+                displayMessage('bot', `Here are your upcoming appointments:`);
+                displayMessage('bot', `<ul>${appointments.map(a => `<li>${a.name} - ${a.doctor} at ${a.location} on ${a.date} at ${a.time}</li>`).join('')}</ul>`);
+            }
+
+            step = 8;
+            displayMessage('bot', 'Is there anything else I can help with? You can provide new symptoms, schedule an appointment, or view your appointments.');
+        }
+    </script>
+</body>
+</html>
